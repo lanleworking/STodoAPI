@@ -1,0 +1,33 @@
+{
+    "name": "S-TodoServer",
+    "version": "1.0.50",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "dev": "bun run --watch src/index.ts",
+        "build": "bun build --target=node --minify-whitespace --minify-syntax --outfile ./dist/index.js src/index.ts",
+        "sql:push": "npx drizzle-kit push",
+        "sql:generate": "npx drizzle-kit generate",
+        "sql:migrate": "npx drizzle-kit migrate"
+    },
+    "dependencies": {
+        "@elysiajs/cors": "^1.4.0",
+        "@elysiajs/jwt": "^1.4.0",
+        "@elysiajs/static": "^1.4.6",
+        "@payos/node": "^2.0.3",
+        "@types/lodash": "^4.17.20",
+        "@types/pg": "^8.15.6",
+        "dayjs": "^1.11.19",
+        "drizzle-orm": "^0.44.7",
+        "elysia": "latest",
+        "firebase-admin": "^13.6.0",
+        "lodash": "^4.17.21",
+        "node-cron": "^4.2.1",
+        "pg": "^8.16.3"
+    },
+    "devDependencies": {
+        "bun-types": "latest",
+        "dotenv": "^17.2.3",
+        "drizzle-kit": "^0.31.6"
+    },
+    "module": "src/index.js"
+}
