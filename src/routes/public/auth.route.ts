@@ -1,5 +1,5 @@
 import jwt from '@elysiajs/jwt';
-import Elysia from 'elysia';
+import Elysia, { t } from 'elysia';
 import {
     deleteAccountController,
     loginController,
@@ -11,6 +11,8 @@ import { ILoginPayload } from '../../types/payload';
 import { catchResponse } from '../../utils/response';
 import { ICommonResponse } from '../../types/http';
 import { NewUserType } from '../../drizzle/type';
+import jwtVerify from '../../middlewares/jwtVerify';
+import { IUserJwt } from '../../types/app';
 
 const authRoute = new Elysia({
     prefix: '/auth',
@@ -43,15 +45,7 @@ const authRoute = new Elysia({
             parse: 'multipart/form-data',
         },
     )
-    .delete('/delete/:userId', async ({ set, params }) => {
-        try {
-            const userId = params.userId;
-            const res = await deleteAccountController(userId);
-            return res;
-        } catch (error) {
-            return catchResponse(set, error as ICommonResponse);
-        }
-    })
+
     .get('/me', async ({ cookie: { token }, jwt, set, headers: { host } }) => {
         try {
             const res = await verifyAccountController(token.value as any, jwt, host);
@@ -60,9 +54,33 @@ const authRoute = new Elysia({
             return catchResponse(set, error as ICommonResponse);
         }
     })
-    .post('/logout', ({ set }) => {
+    .derive(async ({ cookie: { token }, jwt, set }) => {
+        const user = (await jwtVerify(token, jwt, set)) as IUserJwt;
+        return { user };
+    })
+    .post(
+        '/logout',
+        ({ set, user, body }) => {
+            try {
+                const res = logOutController(set, {
+                    userId: user.userId,
+                    platform: body?.platform,
+                });
+                return res;
+            } catch (error) {
+                return catchResponse(set, error as ICommonResponse);
+            }
+        },
+        {
+            body: t.Object({
+                platform: t.Optional(t.String()),
+            }),
+        },
+    )
+    .delete('/delete/:userId', async ({ set, params }) => {
         try {
-            const res = logOutController(set);
+            const userId = params.userId;
+            const res = await deleteAccountController(userId);
             return res;
         } catch (error) {
             return catchResponse(set, error as ICommonResponse);
