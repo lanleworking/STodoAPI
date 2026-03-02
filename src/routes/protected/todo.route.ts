@@ -146,6 +146,14 @@ const todoRoute = new Elysia({
         } catch (error) {
             return catchResponse(set, error as ICommonResponse);
         }
+    })
+    .get('/:todoId/donation-chart', async ({ params, set }) => {
+        try {
+            const res = await getAllTodoController.getDonationChartByTodo(Number(params.todoId));
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
     });
 
 export default todoRoute;

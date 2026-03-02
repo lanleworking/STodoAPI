@@ -129,6 +129,12 @@ export const paymentLogsData = async (payload: { todoId: number; limit: number; 
     const { todoId, limit, page } = payload;
     const offset = (page - 1) * limit;
 
+    const [{ total }] = await db
+        .select({ total: sql<number>`count(*)` })
+        .from(paymentLogs)
+        .innerJoin(users, eq(paymentLogs.createdBy, users.userId))
+        .where(and(eq(paymentLogs.todoId, todoId), isNotNull(users.userId), eq(paymentLogs.status, 'PAID')));
+
     const paymentLogData = await db
         .select({
             id: paymentLogs.id,
@@ -149,15 +155,35 @@ export const paymentLogsData = async (payload: { todoId: number; limit: number; 
         .limit(limit)
         .offset(offset);
 
+    const totalCount = Number(total);
     return {
         data: paymentLogData,
         pagination: {
             page,
             limit,
-            total: paymentLogData.length,
-            totalPage: Math.ceil(paymentLogData.length / limit),
+            total: totalCount,
+            totalPage: Math.ceil(totalCount / limit),
         },
     };
+};
+
+export const getDonationChartByTodo = async (todoId: number) => {
+    if (!todoId) throw throwResponse(EStatusCodes.BAD_REQUEST, EHttpCode.INVALID_PAYLOAD, 'Invalid Todo');
+
+    const data = await db
+        .select({
+            userId: users.userId,
+            fullName: users.fullName,
+            avatarUrl: users.avatarUrl,
+            totalAmount: sql<number>`sum(${paymentLogs.amount})`,
+        })
+        .from(paymentLogs)
+        .innerJoin(users, eq(paymentLogs.createdBy, users.userId))
+        .where(and(eq(paymentLogs.todoId, todoId), eq(paymentLogs.status, 'PAID')))
+        .groupBy(users.userId, users.fullName, users.avatarUrl)
+        .orderBy(desc(sql`sum(${paymentLogs.amount})`));
+
+    return data;
 };
 
 const getRecentTodo = async (userId: string) => {
