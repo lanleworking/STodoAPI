@@ -5,6 +5,7 @@ import staticPlugin from '@elysiajs/static';
 import './firebase/config';
 import cron from 'node-cron';
 import { dailyNotiChecker } from './utils/dailyNotiChecker';
+import { pendingPaymentChecker } from './controllers/payos/payment.controller';
 import userRoute from './routes/protected/user.route';
 import authRoute from './routes/public/auth.route';
 import todoRoute from './routes/protected/todo.route';
@@ -32,6 +33,10 @@ pool.connect()
 
 cron.schedule('*/1 * * * *', async () => {
     await dailyNotiChecker();
+});
+
+cron.schedule('*/1 * * * *', async () => {
+    await pendingPaymentChecker();
 });
 
 app.listen({

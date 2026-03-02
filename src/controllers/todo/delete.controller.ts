@@ -9,7 +9,7 @@ async function deleteTodo(todoId: number[], userId: string): Promise<ICommonResp
     if (!userId || isEmpty(todoId))
         throw throwResponse(EStatusCodes.BAD_REQUEST, EHttpCode.INVALID_PAYLOAD, 'Invalid delete payload');
 
-    await db.delete(todos).where(and(eq(todos.createdby, userId), inArray(todos.id, todoId)));
+    await db.delete(todos).where(and(eq(todos.createdBy, userId), inArray(todos.id, todoId)));
     return {
         status: EStatusCodes.OK,
         code: EHttpCode.DELETED,

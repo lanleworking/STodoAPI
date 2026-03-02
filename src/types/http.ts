@@ -22,6 +22,7 @@ export enum EHttpCode {
     SERVER_ERROR = 'SERVER_ERROR',
     UPDATED = 'UPDATED',
     NO_CONTENT = 'NO_CONTENT',
+    FORBIDDEN = 'FORBIDDEN',
 }
 
 export interface ICommonResponse {

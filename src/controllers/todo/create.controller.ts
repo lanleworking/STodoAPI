@@ -35,7 +35,7 @@ async function create(
         ...payload,
         startDate: payload.startDate ? new Date(payload.startDate).toISOString() : null,
         endDate: payload.endDate ? new Date(payload.endDate).toISOString() : null,
-        createdby: userId,
+        createdBy: userId,
     };
     // Create the todo
     const [lastestNewTodo] = await db

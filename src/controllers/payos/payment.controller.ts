@@ -5,10 +5,34 @@ import payOS from '../../payos/config';
 import { ICreatePaymentLinkPayload } from '../../types/payload';
 import { NewPaymentLogType } from '../../drizzle/type';
 import { db } from '../../drizzle/db';
-import { paymentLogs, todoUsers, users, userTokens } from '../../drizzle/schema';
-import { eq } from 'drizzle-orm';
+import { paymentLogs, todos, todoUsers, users, userTokens } from '../../drizzle/schema';
+import { count, desc, eq } from 'drizzle-orm';
 import { sendFCM } from '../../utils/dailyNotiChecker';
 import { thousandSeparator } from '../../utils/convert';
+import { PAYMENT_EXPIRE_MINUTES } from '../../constants/payment';
+
+const sendFCMWithRetry = async (
+    token: string,
+    title: string,
+    body: string,
+    maxRetries = 3,
+    delayMs = 500,
+): Promise<void> => {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            await sendFCM(token, title, body);
+            return;
+        } catch (error) {
+            lastError = error;
+            console.warn(`FCM attempt ${attempt}/${maxRetries} failed:`, error);
+            if (attempt < maxRetries) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+            }
+        }
+    }
+    throw lastError;
+};
 
 export const createPaymentLink = async (
     payload: ICreatePaymentLinkPayload,
@@ -21,7 +45,7 @@ export const createPaymentLink = async (
     const modifyPayload: CreatePaymentLinkRequest = {
         ...rest,
         orderCode: now,
-        description: `${userId}_${todoId}`,
+        description: note || `Payment for todo #${todoId}`,
         cancelUrl: 'https://yourdomain.com/cancel',
         returnUrl: 'https://yourdomain.com/success',
     };
@@ -82,6 +106,97 @@ export const getPayment = async (paymentId: string): Promise<PaymentLink> => {
     return data;
 };
 
+export const getPaymentHistoryByUser = async (
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+): Promise<{
+    data: {
+        id: number;
+        todoId: number;
+        todoTitle: string | null;
+        paymentLinkId: string;
+        amount: number;
+        status: string;
+        note: string | null;
+        qrCode: string | null;
+        createdAt: string | null;
+        updatedAt: string | null;
+    }[];
+    pagination: { page: number; limit: number; total: number; totalPage: number };
+}> => {
+    if (!userId) throw throwResponse(EStatusCodes.FORBIDDEN, EHttpCode.INVALID_PAYLOAD, 'Invalid User');
+    const offset = (page - 1) * limit;
+
+    const [countResult] = await db
+        .select({ total: count() })
+        .from(paymentLogs)
+        .where(eq(paymentLogs.createdBy, userId));
+
+    const data = await db
+        .select({
+            id: paymentLogs.id,
+            todoId: paymentLogs.todoId,
+            todoTitle: todos.title,
+            paymentLinkId: paymentLogs.paymentLinkId,
+            amount: paymentLogs.amount,
+            status: paymentLogs.status,
+            note: paymentLogs.note,
+            qrCode: paymentLogs.qrCode,
+            createdAt: paymentLogs.createdAt,
+            updatedAt: paymentLogs.updatedAt,
+        })
+        .from(paymentLogs)
+        .innerJoin(todos, eq(paymentLogs.todoId, todos.id))
+        .where(eq(paymentLogs.createdBy, userId))
+        .orderBy(desc(paymentLogs.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    return {
+        data,
+        pagination: {
+            page,
+            limit,
+            total: Number(countResult.total),
+            totalPage: Math.ceil(Number(countResult.total) / limit),
+        },
+    };
+};
+
+export const pendingPaymentChecker = async (): Promise<void> => {
+    const pendingPayments = await db.select().from(paymentLogs).where(eq(paymentLogs.status, 'PENDING'));
+
+    const now = Date.now();
+    const EXPIRE_MS = PAYMENT_EXPIRE_MINUTES * 60 * 1000;
+
+    for (const payment of pendingPayments) {
+        try {
+            const paymentData = await payOS.paymentRequests.get(payment.paymentLinkId);
+
+            if (paymentData.status.toLowerCase() === 'paid') {
+                await handlePaymentWebhook(paymentData);
+            } else {
+                const createdAt = new Date(payment.createdAt!).getTime();
+                if (now - createdAt >= EXPIRE_MS) {
+                    try {
+                        await payOS.paymentRequests.cancel(payment.paymentLinkId);
+                    } catch (_) {
+                        // ignore if already cancelled on PayOS side
+                    }
+                    await db
+                        .update(paymentLogs)
+                        .set({ status: 'CANCELLED', updatedAt: new Date().toISOString() })
+                        .where(eq(paymentLogs.id, payment.id));
+                    console.log(`Auto-cancelled expired pending payment: ${payment.paymentLinkId}`);
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to check pending payment ${payment.paymentLinkId}:`, error);
+        }
+    }
+};
+
 export const handlePaymentWebhook = async (paymentData: PaymentLink): Promise<void> => {
     const [payLogs] = await db.select().from(paymentLogs).where(eq(paymentLogs.paymentLinkId, paymentData.id)).limit(1);
     if (payLogs) {
@@ -121,16 +236,16 @@ export const handlePaymentWebhook = async (paymentData: PaymentLink): Promise<vo
             // Send FCM notifications to all users
             for (const userToken of userTokensForTodo) {
                 try {
-                    await sendFCM(
+                    await sendFCMWithRetry(
                         userToken.token,
-                        'Quỹ đã được cập nhật 🙌 💰',
-                        `${paidUser.fullName || paidUser.userId} đã góp **${thousandSeparator(
+                        'Quỹ đã được cập nhật 🙌 💰',
+                        `${paidUser.fullName || paidUser.userId} đã góp **${thousandSeparator(
                             payLogs.amount,
                             'VND',
-                        )}** vào quỹ! `,
+                        )}** vào quỹ! `,
                     );
                 } catch (error) {
-                    console.error(`Failed to send FCM to user ${userToken.userId}:`, error);
+                    console.error(`Failed to send FCM to user ${userToken.userId} after all retries:`, error);
                 }
             }
         }

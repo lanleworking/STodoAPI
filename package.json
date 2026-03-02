@@ -7,7 +7,8 @@
         "build": "bun build --target=node --minify-whitespace --minify-syntax --outfile ./dist/index.js src/index.ts",
         "sql:push": "npx drizzle-kit push",
         "sql:generate": "npx drizzle-kit generate",
-        "sql:migrate": "npx drizzle-kit migrate"
+        "sql:migrate": "npx drizzle-kit migrate",
+        "type-check": "tsc --noEmit"
     },
     "dependencies": {
         "@elysiajs/cors": "^1.4.0",

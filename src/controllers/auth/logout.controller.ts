@@ -1,4 +1,3 @@
-import { isEmpty } from 'lodash';
 import { db } from '../../drizzle/db';
 import { userTokens } from '../../drizzle/schema';
 import { EHttpCode, EStatusCodes, ICommonResponse } from '../../types/http';

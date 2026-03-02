@@ -44,6 +44,16 @@ const paymentRoute = new Elysia({
         } catch (error) {
             return catchResponse(set, error as ICommonResponse);
         }
+    })
+    .get('/history', async ({ set, user, query }) => {
+        try {
+            const page = Number(query.page) || 1;
+            const limit = Number(query.limit) || 10;
+            const res = await paymentController.getPaymentHistoryByUser(user.userId, page, limit);
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
     });
 
 export default paymentRoute;

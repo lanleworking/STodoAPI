@@ -5,6 +5,7 @@ import {
     deleteTodoController,
     getAllTodoController,
     updateTodoController,
+    getUserController,
 } from '../../controllers';
 import { catchResponse } from '../../utils/response';
 import { ICommonResponse } from '../../types/http';
@@ -104,6 +105,43 @@ const todoRoute = new Elysia({
     .get('/barChartData', async ({ set, user }) => {
         try {
             const res = await getAllTodoController.getBarChartStatusData(user.userId);
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
+    })
+    .get('/user-options', async ({ set }) => {
+        try {
+            const res = await getUserController.getAllUserOptions();
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
+    })
+    .put('/:todoId/update', async ({ params, body, set, user }) => {
+        try {
+            const res = await updateTodoController.updateTodo(Number(params.todoId), body as any, user.userId);
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
+    })
+    .post('/:todoId/members', async ({ params, body, set, user }) => {
+        try {
+            const { userId: targetUserId } = body as { userId: string };
+            const res = await updateTodoController.addUserToTodo(Number(params.todoId), targetUserId, user.userId);
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
+    })
+    .delete('/:todoId/members/:userId', async ({ params, set, user }) => {
+        try {
+            const res = await updateTodoController.removeUserFromTodo(
+                Number(params.todoId),
+                params.userId,
+                user.userId,
+            );
             return res;
         } catch (error) {
             return catchResponse(set, error as ICommonResponse);

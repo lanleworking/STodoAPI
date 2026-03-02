@@ -38,11 +38,15 @@ export const dailyNotiChecker = async () => {
     const allNoti = [...daily, ...monthly];
 
     for (const n of allNoti) {
-        await sendFCM(n.token, n.title!, n.body!);
+        try {
+            await sendFCM(n.token, n.title!, n.body!);
+        } catch (error) {
+            console.error('Error sending FCM message:', error);
+        }
     }
 };
 
-export const sendFCM = async (token: string, title: string, body: string) => {
+export const sendFCM = async (token: string, title: string, body: string): Promise<void> => {
     const message = {
         notification: {
             title: title,
@@ -51,9 +55,5 @@ export const sendFCM = async (token: string, title: string, body: string) => {
         token: token,
     };
 
-    try {
-        await messaging.send(message);
-    } catch (error) {
-        console.error('Error sending FCM message:', error);
-    }
+    await messaging.send(message);
 };
