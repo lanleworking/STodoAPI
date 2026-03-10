@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../../drizzle/db';
 import { paymentLogs, todoOrders, todos, todoUsers, users } from '../../drizzle/schema';
 import { EHttpCode, EStatusCodes } from '../../types/http';
@@ -109,13 +109,13 @@ const getTodoById = async (
         .from(users)
         .innerJoin(todoUsers, and(eq(users.userId, todoUsers.userId), and(eq(todoUsers.todoId, todoId))));
 
-    // total amount
+    // total amount: SUM(PAID) - SUM(WITHDRAWAL)
     const total = await db
         .select({
-            totalAmount: sql<number>`sum(${paymentLogs.amount})`,
+            totalAmount: sql<number>`COALESCE(SUM(CASE WHEN ${paymentLogs.status} = 'PAID' THEN ${paymentLogs.amount} WHEN ${paymentLogs.status} = 'WITHDRAWAL' THEN -${paymentLogs.amount} ELSE 0 END), 0)`,
         })
         .from(paymentLogs)
-        .where(and(eq(paymentLogs.todoId, todoId), eq(paymentLogs.status, 'PAID')));
+        .where(eq(paymentLogs.todoId, todoId));
 
     return {
         ...todo,
@@ -133,7 +133,13 @@ export const paymentLogsData = async (payload: { todoId: number; limit: number; 
         .select({ total: sql<number>`count(*)` })
         .from(paymentLogs)
         .innerJoin(users, eq(paymentLogs.createdBy, users.userId))
-        .where(and(eq(paymentLogs.todoId, todoId), isNotNull(users.userId), eq(paymentLogs.status, 'PAID')));
+        .where(
+            and(
+                eq(paymentLogs.todoId, todoId),
+                isNotNull(users.userId),
+                inArray(paymentLogs.status, ['PAID', 'WITHDRAWAL']),
+            ),
+        );
 
     const paymentLogData = await db
         .select({
@@ -150,7 +156,13 @@ export const paymentLogsData = async (payload: { todoId: number; limit: number; 
         })
         .from(paymentLogs)
         .innerJoin(users, eq(paymentLogs.createdBy, users.userId))
-        .where(and(eq(paymentLogs.todoId, todoId), isNotNull(users.userId), eq(paymentLogs.status, 'PAID')))
+        .where(
+            and(
+                eq(paymentLogs.todoId, todoId),
+                isNotNull(users.userId),
+                inArray(paymentLogs.status, ['PAID', 'WITHDRAWAL']),
+            ),
+        )
         .orderBy(desc(paymentLogs.createdAt))
         .limit(limit)
         .offset(offset);

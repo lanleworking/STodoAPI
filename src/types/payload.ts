@@ -9,3 +9,9 @@ export interface ICreatePaymentLinkPayload extends CreatePaymentLinkRequest {
     todoId: number;
     note?: string;
 }
+
+export interface IWithdrawPayload {
+    todoId: number;
+    amount: number;
+    note?: string;
+}

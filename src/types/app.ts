@@ -42,4 +42,5 @@ export enum ELogAction {
     UPDATE = 'UPDATE',
     DELETE = 'DELETE',
     STATUS_CHANGE = 'STATUS_CHANGE',
+    WITHDRAWAL = 'WITHDRAWAL',
 }
