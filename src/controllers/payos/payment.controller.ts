@@ -2,11 +2,11 @@ import { CreatePaymentLinkRequest, CreatePaymentLinkResponse, PaymentLink } from
 import { throwResponse } from '../../utils/response';
 import { EHttpCode, EStatusCodes, ICommonResponse } from '../../types/http';
 import payOS from '../../payos/config';
-import { ICreatePaymentLinkPayload } from '../../types/payload';
+import { ICreatePaymentLinkPayload, IWithdrawPayload } from '../../types/payload';
 import { NewPaymentLogType } from '../../drizzle/type';
 import { db } from '../../drizzle/db';
 import { paymentLogs, todos, todoUsers, users, userTokens } from '../../drizzle/schema';
-import { count, desc, eq } from 'drizzle-orm';
+import { count, desc, eq, sql } from 'drizzle-orm';
 import { sendFCM } from '../../utils/dailyNotiChecker';
 import { thousandSeparator } from '../../utils/convert';
 import { PAYMENT_EXPIRE_MINUTES } from '../../constants/payment';
@@ -252,4 +252,90 @@ export const handlePaymentWebhook = async (paymentData: PaymentLink): Promise<vo
     } else {
         throwResponse(EStatusCodes.NOT_FOUND, EHttpCode.NOT_FOUND, 'Webhook payment log not found');
     }
+};
+
+export const createWithdrawal = async (payload: IWithdrawPayload, userId: string): Promise<ICommonResponse> => {
+    if (!userId || !payload.todoId || !payload.amount || payload.amount <= 0)
+        throw throwResponse(EStatusCodes.BAD_REQUEST, EHttpCode.INVALID_PAYLOAD, 'Invalid withdrawal payload');
+
+    // Verify todo exists and is a fund type
+    const [todo] = await db.select().from(todos).where(eq(todos.id, payload.todoId)).limit(1);
+    if (!todo) throw throwResponse(EStatusCodes.NOT_FOUND, EHttpCode.NOT_FOUND, 'Todo not found');
+    if (todo.type !== 'FUND')
+        throw throwResponse(
+            EStatusCodes.BAD_REQUEST,
+            EHttpCode.INVALID_PAYLOAD,
+            'Withdrawals are only allowed for fund-type todos',
+        );
+
+    // Verify user is the owner
+    if (todo.createdBy !== userId)
+        throw throwResponse(EStatusCodes.FORBIDDEN, EHttpCode.INVALID_PAYLOAD, 'Only the owner can withdraw funds');
+
+    // Calculate current balance: SUM(PAID) - SUM(WITHDRAWAL)
+    const [balanceResult] = await db
+        .select({
+            balance: sql<number>`COALESCE(SUM(CASE WHEN ${paymentLogs.status} = 'PAID' THEN ${paymentLogs.amount} WHEN ${paymentLogs.status} = 'WITHDRAWAL' THEN -${paymentLogs.amount} ELSE 0 END), 0)`,
+        })
+        .from(paymentLogs)
+        .where(eq(paymentLogs.todoId, payload.todoId));
+
+    const currentBalance = Number(balanceResult?.balance ?? 0);
+    if (payload.amount > currentBalance)
+        throw throwResponse(
+            EStatusCodes.BAD_REQUEST,
+            EHttpCode.INVALID_PAYLOAD,
+            'Withdrawal amount exceeds current balance',
+        );
+
+    // Insert withdrawal record
+    const now = Date.now();
+    const paymentLog: NewPaymentLogType = {
+        amount: payload.amount,
+        createdBy: userId,
+        todoId: payload.todoId,
+        paymentLinkId: `WITHDRAWAL-${now}`,
+        status: 'WITHDRAWAL',
+        note: payload.note || '',
+        qrCode: '',
+    };
+    await db.insert(paymentLogs).values(paymentLog);
+
+    // Send FCM notifications to all todo members
+    try {
+        const [withdrawUser] = await db
+            .select({ fullName: users.fullName, userId: users.userId })
+            .from(users)
+            .where(eq(users.userId, userId))
+            .limit(1);
+
+        const userTokensForTodo = await db
+            .select({
+                userId: todoUsers.userId,
+                token: userTokens.token,
+            })
+            .from(todoUsers)
+            .innerJoin(userTokens, eq(todoUsers.userId, userTokens.userId))
+            .where(eq(todoUsers.todoId, payload.todoId));
+
+        for (const userToken of userTokensForTodo) {
+            try {
+                await sendFCMWithRetry(
+                    userToken.token,
+                    'Quỹ đã được rút tiền 💸',
+                    `${withdrawUser.fullName || withdrawUser.userId} đã rút **${thousandSeparator(payload.amount, 'VND')}** từ quỹ.`,
+                );
+            } catch (error) {
+                console.error(`Failed to send FCM to user ${userToken.userId} after all retries:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to send withdrawal notifications:', error);
+    }
+
+    return {
+        message: 'Withdrawal successful',
+        code: EHttpCode.CREATE,
+        status: EStatusCodes.OK,
+    };
 };

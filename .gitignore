@@ -48,3 +48,4 @@ server.exe
 /dist/
 firebase-key.json
 /drizzle/
+bun.lock

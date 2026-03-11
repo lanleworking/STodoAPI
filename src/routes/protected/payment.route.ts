@@ -5,7 +5,7 @@ import { catchResponse } from '../../utils/response';
 import { ICommonResponse } from '../../types/http';
 import { paymentController } from '../../controllers';
 import { IUserJwt } from '../../types/app';
-import { ICreatePaymentLinkPayload } from '../../types/payload';
+import { ICreatePaymentLinkPayload, IWithdrawPayload } from '../../types/payload';
 import jwtVerify from '../../middlewares/jwtVerify';
 
 const paymentRoute = new Elysia({
@@ -24,6 +24,14 @@ const paymentRoute = new Elysia({
     .post('/createLink', async ({ set, body, user }) => {
         try {
             const res = await paymentController.createPaymentLink(body as ICreatePaymentLinkPayload, user.userId);
+            return res;
+        } catch (error) {
+            return catchResponse(set, error as ICommonResponse);
+        }
+    })
+    .post('/withdraw', async ({ set, body, user }) => {
+        try {
+            const res = await paymentController.createWithdrawal(body as IWithdrawPayload, user.userId);
             return res;
         } catch (error) {
             return catchResponse(set, error as ICommonResponse);
