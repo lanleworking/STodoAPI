@@ -218,7 +218,7 @@ export const handlePaymentWebhook = async (paymentData: PaymentLink): Promise<vo
                     userId: users.userId,
                 })
                 .from(users)
-                .where(eq(users.userId, paymentLogs.createdBy))
+                .where(eq(users.userId, payLogs.createdBy))
                 .limit(1);
 
             // Optimized query with joins to get all user tokens in one query
@@ -239,7 +239,7 @@ export const handlePaymentWebhook = async (paymentData: PaymentLink): Promise<vo
                     await sendFCMWithRetry(
                         userToken.token,
                         'Quỹ đã được cập nhật 🙌 💰',
-                        `${paidUser.fullName || paidUser.userId} đã góp **${thousandSeparator(
+                        `${paidUser?.fullName || paidUser?.userId || 'Một thành viên'} đã góp **${thousandSeparator(
                             payLogs.amount,
                             'VND',
                         )}** vào quỹ! `,
